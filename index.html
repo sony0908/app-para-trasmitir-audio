@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Stream - TURN Relay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f0f2f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 15px;
+        }
+        .role-selector {
+            display: flex;
+            gap: 12px;
+            margin: 20px 0;
+        }
+        .role-selector button {
+            flex: 1;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            cursor: pointer;
+            background: white;
+            transition: all 0.2s;
+        }
+        .role-selector button.active {
+            border-color: #0070f3;
+            background: #e8f0fe;
+            color: #0070f3;
+        }
+        .role-selector button:hover {
+            border-color: #0070f3;
+        }
+        .room-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        .room-section label {
+            font-weight: 600;
+            color: #333;
+        }
+        .room-section input {
+            flex: 1;
+            min-width: 150px;
+            padding: 10px 14px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: border 0.2s;
+        }
+        .room-section input:focus {
+            border-color: #0070f3;
+        }
+        .room-section button {
+            padding: 10px 24px;
+            background: #0070f3;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .room-section button:hover:not(:disabled) {
+            background: #0051b3;
+        }
+        .room-section button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin: 15px 0;
+            padding: 14px 18px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 15px;
+            min-height: 50px;
+            border-left: 4px solid #0070f3;
+            word-break: break-word;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        .controls button {
+            padding: 12px 28px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .controls .start {
+            background: #0070f3;
+            color: white;
+        }
+        .controls .start:hover:not(:disabled) {
+            background: #0051b3;
+        }
+        .controls .stop {
+            background: #dc3545;
+            color: white;
+        }
+        .controls .stop:hover:not(:disabled) {
+            background: #b02a37;
+        }
+        #log {
+            margin-top: 20px;
+            padding: 16px;
+            background: #1e1e1e;
+            color: #00ff41;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 350px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        #log::-webkit-scrollbar {
+            width: 8px;
+        }
+        #log::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 4px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge.sender {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .badge.receiver {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        @media (max-width: 600px) {
+            .container { padding: 20px; }
+            .role-selector { flex-direction: column; }
+            .room-section { flex-direction: column; align-items: stretch; }
+            .controls { flex-direction: column; }
+            .controls button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Audio Stream</h1>
+        <p class="subtitle">Transmite audio desde tu móvil al PC usando WebRTC + TURN</p>
+
+        <div class="role-selector">
+            <button id="btnSender" class="active">📱 Emisor (Móvil)</button>
+            <button id="btnReceiver">💻 Receptor (PC)</button>
+        </div>
+
+        <div class="room-section">
+            <label for="roomInput">🔑 Sala:</label>
+            <input type="text" id="roomInput" value="audio-room-123" />
+            <button id="btnConnect">Conectar</button>
+        </div>
+
+        <div id="status">📱 Modo Emisor (Móvil) — Elige un rol y conecta</div>
+
+        <div class="controls">
+            <button id="btnStart" class="start" disabled>▶️ Iniciar</button>
+            <button id="btnStop" class="stop" disabled>⏹️ Detener</button>
+        </div>
+
+        <div id="log">📋 Log de eventos</div>
+    </div>
+
+    <script>
+        // ═══════════════════════════════════════════════════════
+        //  CONFIGURACIÓN
+        // ═══════════════════════════════════════════════════════
+        const TURN_SERVER_URL = 'https://audio-turn-relay.ericksong4b2016.workers.dev/';
+        
+        // ═══════════════════════════════════════════════════════
+        //  ESTADO
+        // ═══════════════════════════════════════════════════════
+        let peerConnection = null;
+        let localStream = null;
+        let isSender = true;
+        let roomId = '';
+        let answerCheckInterval = null;
+
+        // ═══════════════════════════════════════════════════════
+        //  DOM ELEMENTS
+        // ═══════════════════════════════════════════════════════
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+        const btnSender = document.getElementById('btnSender');
+        const btnReceiver = document.getElementById('btnReceiver');
+        const btnConnect = document.getElementById('btnConnect');
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const roomInput = document.getElementById('roomInput');
+
+        // ═══════════════════════════════════════════════════════
+        //  FUNCIONES AUXILIARES
+        // ═══════════════════════════════════════════════════════
+        function log(msg) {
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${msg}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function setStatus(msg, isError = false) {
+            statusDiv.textContent = msg;
+            statusDiv.style.borderLeftColor = isError ? '#dc3545' : '#0070f3';
+            log(msg);
+        }
+
+        function updateUI(connected = false) {
+            btnConnect.disabled = connected;
+            btnStart.disabled = connected ? false : true;
+            btnStop.disabled = connected ? false : true;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  OBTENER CREDENCIALES TURN
+        // ═══════════════════════════════════════════════════════
+        async function getTURNConfig() {
+            try {
+                const response = await fetch(TURN_SERVER_URL);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                log('✅ Configuración TURN obtenida');
+                return data.iceServers;
+            } catch (error) {
+                log(`❌ Error al obtener TURN: ${error.message}`);
+                throw error;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  CREAR PEER CONNECTION
+        // ═══════════════════════════════════════════════════════
+        async function createPeerConnection() {
+            const iceServers = await getTURNConfig();
+            
+            const config = {
+                iceServers: iceServers,
+                iceTransportPolicy: 'all'
+            };
+
+            peerConnection = new RTCPeerConnection(config);
+            
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    log(`🧊 Candidato ICE: ${event.candidate.candidate}`);
+                } else {
+                    log('✅ Todos los candidatos ICE enviados');
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                log(`🔗 Estado ICE: ${peerConnection.iceConnectionState}`);
+                if (peerConnection.iceConnectionState === 'connected') {
+                    setStatus('✅ ¡Conectado! Audio fluyendo...');
+                } else if (peerConnection.iceConnectionState === 'failed') {
+                    setStatus('❌ Falló la conexión ICE. Reintenta.', true);
+                }
+            };
+
+            if (!isSender) {
+                peerConnection.ontrack = (event) => {
+                    log('🎵 Pista de audio recibida');
+                    const audioElement = new Audio();
+                    audioElement.srcObject = event.streams[0];
+                    audioElement.play()
+                        .then(() => setStatus('🎧 Reproduciendo audio...'))
+                        .catch(e => log(`❌ Error al reproducir: ${e.message}`));
+                };
+            }
+
+            return peerConnection;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  EMISOR: CREAR OFERTA
+        // ═══════════════════════════════════════════════════════
+        async function createOffer() {
+            try {
+                const pc = await createPeerConnection();
+                
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+                log('🎤 Audio capturado');
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                log('📤 Oferta creada');
+
+                const offerData = {
+                    type: 'offer',
+                    sdp: offer.sdp,
+                    room: roomId
+                };
+                localStorage.setItem(`offer-${roomId}`, JSON.stringify(offerData));
+                log(`📦 Oferta guardada en localStorage con ID: ${roomId}`);
+                
+                setStatus('📤 Oferta creada. Esperando respuesta...');
+                updateUI(true);
+                waitForAnswer();
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+                setStatus(`❌ Error: ${error.message}`, true);
+            }
+        }
+
+        function waitForAnswer() {
+            if (answerCheckInterval) clearInterval(answerCheckInterval);
+            
+            answerCheckInterval = setInterval(() => {
+                const answerData = localStorage.getItem(`answer-${roomId}`);
+                if (answerData) {
+                    clearInterval(answerCheckInterval);
+                    answerCheckInterval = null;
+                    try {
+                        const answer = JSON.parse(answerData);
+                        peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                        log('📥 Respuesta recibida y establecida');
+                        setStatus('✅ Conexión establecida!');
+                    } catch (error) {
+                        log(`❌ Error al procesar respuesta: ${error.message}`);
+                    }
+                }
+            }, 2000);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  RECEPTOR: CREAR RESPUESTA
+        // ═══════════════════════════════════════════════════════
+        async function createAnswer() {
+            try {
+                const pc = await createPeerConnection();
+                
+                const offerData = localStorage.getItem(`offer-${roomId}`);
+                if (!offerData) {
+                    setStatus('❌ No hay oferta disponible. Espera a que el emisor la cree.', true);
+                    return;
+                }
+                
+                const offer = JSON.parse(offerData);
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                log('📥 Oferta recibida y establecida');
+
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                log('📤 Respuesta creada');
+
+                const answerData = {
+                    type: 'answer',
+                    sdp: answer.sdp,
+                    room: roomId
+                };
+                localStorage.setItem(`answer-${roomId}`, JSON.stringify(answerData));
+                log(`📦 Respuesta guardada en localStorage con ID: ${roomId}`);
+                
+                setStatus('📤 Respuesta enviada. Esperando conexión...');
+                updateUI(true);
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`);
+                setStatus(`❌ Error: ${error.message}`, true);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  DETENER CONEXIÓN
+        // ═══════════════════════════════════════════════════════
+        function stopStream() {
+            if (answerCheckInterval) {
+                clearInterval(answerCheckInterval);
+                answerCheckInterval = null;
+            }
+            
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            // Limpiar datos de señalización
+            localStorage.removeItem(`offer-${roomId}`);
+            localStorage.removeItem(`answer-${roomId}`);
+            
+            setStatus('⏹️ Transmisión detenida');
+            log('⏹️ Sesión finalizada');
+            updateUI(false);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  EVENTOS UI
+        // ═══════════════════════════════════════════════════════
+        btnSender.addEventListener('click', () => {
+            isSender = true;
+            btnSender.classList.add('active');
+            btnReceiver.classList.remove('active');
+            setStatus('📱 Modo Emisor (Móvil)');
+            stopStream();
+        });
+
+        btnReceiver.addEventListener('click', () => {
+            isSender = false;
+            btnReceiver.classList.add('active');
+            btnSender.classList.remove('active');
+            setStatus('💻 Modo Receptor (PC)');
+            stopStream();
+        });
+
+        btnConnect.addEventListener('click', async () => {
+            roomId = roomInput.value.trim() || 'audio-room-123';
+            log(`🔑 Conectando a sala: ${roomId}`);
+            
+            // Limpiar datos antiguos de esta sala
+            localStorage.removeItem(`offer-${roomId}`);
+            localStorage.removeItem(`answer-${roomId}`);
+            
+            if (isSender) {
+                await createOffer();
+            } else {
+                await createAnswer();
+            }
+        });
+
+        btnStart.addEventListener('click', async () => {
+            if (isSender) {
+                await createOffer();
+            } else {
+                await createAnswer();
+            }
+        });
+
+        btnStop.addEventListener('click', stopStream);
+
+        // ═══════════════════════════════════════════════════════
+        //  INICIALIZACIÓN
+        // ═══════════════════════════════════════════════════════
+        setStatus('📱 Modo Emisor (Móvil) — Elige un rol y conecta');
+        log('🚀 App iniciada. TURN relay: Cloudflare');
+        updateUI(false);
+    </script>
+</body>
+</html>
