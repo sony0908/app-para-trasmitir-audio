@@ -3,49 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Streaming Audio - Corporativo</title>
+  <title>Audio Streamer - Manual</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #1a1a2e; color: white; }
-    button { padding: 15px 30px; margin: 10px; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; }
+    body { font-family: Arial; max-width: 700px; margin: 20px auto; padding: 20px; background: #1a1a2e; color: white; }
+    button { padding: 12px 25px; margin: 5px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; }
     #btnEmisor { background: #e94560; color: white; }
     #btnReceptor { background: #0f3460; color: white; }
     #btnDetener { background: #533483; color: white; }
-    #log { background: #16213e; padding: 15px; border-radius: 10px; max-height: 400px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; }
+    textarea { width: 100%; height: 100px; background: #16213e; color: #0f0; border: 1px solid #333; border-radius: 8px; padding: 8px; font-size: 12px; resize: vertical; }
+    #log { background: #16213e; padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; margin-top: 15px; }
+    .flex { display: flex; gap: 10px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
-  <h1>🎧 Audio Streamer</h1>
-  <div>
+  <h1>🎧 Audio Streamer (Manual)</h1>
+  <div class="flex">
     <button id="btnEmisor">📱 Emisor (Móvil)</button>
     <button id="btnReceptor">💻 Receptor (PC)</button>
     <button id="btnDetener">⏹️ Detener</button>
   </div>
-  <h3>📋 Log de eventos</h3>
+  <div>
+    <h4>📤 Oferta (copiar desde emisor):</h4>
+    <textarea id="offerText" placeholder="Esperando oferta..."></textarea>
+    <button id="btnPegarOferta">📥 Pegar oferta en receptor</button>
+  </div>
+  <div>
+    <h4>📥 Respuesta (copiar desde receptor):</h4>
+    <textarea id="answerText" placeholder="Esperando respuesta..."></textarea>
+    <button id="btnPegarRespuesta">📤 Pegar respuesta en emisor</button>
+  </div>
+  <h3>📋 Log</h3>
   <div id="log"></div>
 
-  <!-- Firebase SDK (versión compat) -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-
   <script>
-    // --- Configuración Firebase ---
-    const firebaseConfig = {
-      apiKey: "AIzaSyByw1Dx3RJcsdNDVtoSdpQb9GTPk4yeWBY",
-      authDomain: "spotify-9fd7f.firebaseapp.com",
-      databaseURL: "https://spotify-9fd7f-default-rtdb.firebaseio.com",
-      projectId: "spotify-9fd7f",
-      storageBucket: "spotify-9fd7f.firebasestorage.app",
-      messagingSenderId: "331137798892",
-      appId: "1:331137798892:web:c473071f2bf4bb57848bc9"
-    };
-
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-
-    // --- Variables globales ---
     let pc = null;
     let localStream = null;
-    let salaId = 'audio-sala-2026';
     let rol = null; // 'emisor' o 'receptor'
 
     const log = (msg) => {
@@ -54,68 +46,18 @@
       el.scrollTop = el.scrollHeight;
     };
 
-    // --- Funciones de señalización con Firebase ---
-    async function guardarOferta(oferta) {
-      await db.ref(`salas/${salaId}/oferta`).set(oferta);
-      log('📤 Oferta guardada en Firebase');
-    }
-
-    async function guardarRespuesta(respuesta) {
-      await db.ref(`salas/${salaId}/respuesta`).set(respuesta);
-      log('📤 Respuesta guardada en Firebase');
-    }
-
-    function escucharOferta(callback) {
-      const ref = db.ref(`salas/${salaId}/oferta`);
-      ref.on('value', snapshot => {
-        const oferta = snapshot.val();
-        if (oferta) {
-          log('📥 Oferta recibida desde Firebase');
-          callback(oferta);
-        }
-      });
-    }
-
-    function escucharRespuesta(callback) {
-      const ref = db.ref(`salas/${salaId}/respuesta`);
-      ref.on('value', snapshot => {
-        const respuesta = snapshot.val();
-        if (respuesta) {
-          log('📥 Respuesta recibida desde Firebase');
-          callback(respuesta);
-        }
-      });
-    }
-
-    function limpiarSala() {
-      db.ref(`salas/${salaId}`).remove();
-      log('🧹 Sala limpiada');
-    }
-
-    // --- Configuración ICE con STUN (y TURN opcional) ---
     const iceConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
-        // Si tienes credenciales de TURN, descomenta esto:
-        // {
-        //   urls: 'turn:relay.cloudflare.com:3478?transport=udp',
-        //   username: 'TU_USUARIO',
-        //   credential: 'TU_CONTRASEÑA'
-        // }
       ]
     };
 
-    // --- Crear conexión Peer ---
     function createPeerConnection(esEmisor) {
-      if (pc) {
-        pc.close();
-        pc = null;
-      }
+      if (pc) { pc.close(); pc = null; }
       pc = new RTCPeerConnection(iceConfig);
 
       if (esEmisor) {
-        // Capturar audio del micrófono
         navigator.mediaDevices.getUserMedia({ audio: true })
           .then(stream => {
             localStream = stream;
@@ -124,7 +66,6 @@
           })
           .catch(err => log('❌ Error al capturar audio: ' + err.message));
       } else {
-        // Reproducir audio en el receptor
         const audio = new Audio();
         pc.ontrack = (event) => {
           audio.srcObject = event.streams[0];
@@ -149,72 +90,68 @@
       return pc;
     }
 
-    // --- Modo Emisor (Móvil) ---
+    // --- Emisor: Crear oferta y mostrarla ---
     async function iniciarEmisor() {
       if (rol === 'emisor') return;
       rol = 'emisor';
       log('📱 Modo Emisor (Móvil)');
-      limpiarSala();
-
       pc = createPeerConnection(true);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      await guardarOferta(offer);
-
-      // Escuchar respuesta del receptor
-      escucharRespuesta(async (respuesta) => {
-        try {
-          await pc.setRemoteDescription(respuesta);
-          log('✅ Conexión completada');
-        } catch (err) {
-          log('❌ Error al establecer respuesta: ' + err.message);
-        }
-      });
+      document.getElementById('offerText').value = JSON.stringify(offer);
+      log('📤 Oferta generada (cópiala y pégala en el PC)');
     }
 
-    // --- Modo Receptor (PC) ---
-    async function iniciarReceptor() {
+    // --- Receptor: Pegar oferta y generar respuesta ---
+    async function pegarOferta() {
       if (rol === 'receptor') return;
       rol = 'receptor';
       log('💻 Modo Receptor (PC)');
-
-      pc = createPeerConnection(false);
-
-      // Escuchar oferta del emisor
-      escucharOferta(async (oferta) => {
-        try {
-          await pc.setRemoteDescription(oferta);
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await guardarRespuesta(answer);
-          log('✅ Respuesta enviada');
-        } catch (err) {
-          log('❌ Error al procesar oferta: ' + err.message);
-        }
-      });
+      const offerText = document.getElementById('offerText').value;
+      if (!offerText) { log('❌ No hay oferta para pegar'); return; }
+      try {
+        const offer = JSON.parse(offerText);
+        pc = createPeerConnection(false);
+        await pc.setRemoteDescription(offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        document.getElementById('answerText').value = JSON.stringify(answer);
+        log('📤 Respuesta generada (cópiala y pégala en el móvil)');
+      } catch (err) {
+        log('❌ Error al procesar oferta: ' + err.message);
+      }
     }
 
-    // --- Detener transmisión ---
+    // --- Emisor: Pegar respuesta para completar conexión ---
+    async function pegarRespuesta() {
+      if (rol !== 'emisor') { log('❌ Debes estar en modo Emisor'); return; }
+      const answerText = document.getElementById('answerText').value;
+      if (!answerText) { log('❌ No hay respuesta para pegar'); return; }
+      try {
+        const answer = JSON.parse(answerText);
+        await pc.setRemoteDescription(answer);
+        log('✅ Conexión completada');
+      } catch (err) {
+        log('❌ Error al procesar respuesta: ' + err.message);
+      }
+    }
+
     function detenerTransmision() {
-      if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = null;
-      }
-      if (pc) {
-        pc.close();
-        pc = null;
-      }
-      limpiarSala();
+      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+      if (pc) { pc.close(); pc = null; }
       rol = null;
+      document.getElementById('offerText').value = '';
+      document.getElementById('answerText').value = '';
       log('⏹️ Transmisión detenida');
     }
 
-    // --- Eventos de botones ---
     document.getElementById('btnEmisor').onclick = iniciarEmisor;
-    document.getElementById('btnReceptor').onclick = iniciarReceptor;
+    document.getElementById('btnReceptor').onclick = () => { log('💻 Modo Receptor listo. Pega la oferta manualmente.'); };
+    document.getElementById('btnPegarOferta').onclick = pegarOferta;
+    document.getElementById('btnPegarRespuesta').onclick = pegarRespuesta;
     document.getElementById('btnDetener').onclick = detenerTransmision;
 
-    log('🚀 App iniciada. Firebase + STUN');
+    log('🚀 App iniciada. Modo manual (sin servidores externos)');
   </script>
 </body>
 </html>
