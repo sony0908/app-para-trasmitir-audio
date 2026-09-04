@@ -3,42 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Audio Streamer - Manual</title>
+  <title>Audio Streamer (Manual)</title>
   <style>
-    body { font-family: Arial; max-width: 700px; margin: 20px auto; padding: 20px; background: #1a1a2e; color: white; }
-    button { padding: 12px 25px; margin: 5px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; }
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 20px; background: #1a1a2e; color: white; }
+    button { padding: 10px 20px; margin: 5px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; }
     #btnEmisor { background: #e94560; color: white; }
     #btnReceptor { background: #0f3460; color: white; }
     #btnDetener { background: #533483; color: white; }
-    textarea { width: 100%; height: 100px; background: #16213e; color: #0f0; border: 1px solid #333; border-radius: 8px; padding: 8px; font-size: 12px; resize: vertical; }
-    #log { background: #16213e; padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; margin-top: 15px; }
-    .flex { display: flex; gap: 10px; flex-wrap: wrap; }
+    textarea { width: 100%; height: 80px; background: #16213e; color: white; border: 1px solid #0f3460; padding: 8px; font-size: 12px; }
+    #log { background: #16213e; padding: 10px; border-radius: 8px; max-height: 300px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; margin-top: 10px; }
+    .copy-btn { background: #0f3460; color: white; padding: 5px 15px; font-size: 14px; }
   </style>
 </head>
 <body>
   <h1>🎧 Audio Streamer (Manual)</h1>
-  <div class="flex">
+  <div>
     <button id="btnEmisor">📱 Emisor (Móvil)</button>
     <button id="btnReceptor">💻 Receptor (PC)</button>
     <button id="btnDetener">⏹️ Detener</button>
   </div>
-  <div>
-    <h4>📤 Oferta (copiar desde emisor):</h4>
-    <textarea id="offerText" placeholder="Esperando oferta..."></textarea>
-    <button id="btnPegarOferta">📥 Pegar oferta en receptor</button>
-  </div>
-  <div>
-    <h4>📥 Respuesta (copiar desde receptor):</h4>
-    <textarea id="answerText" placeholder="Esperando respuesta..."></textarea>
-    <button id="btnPegarRespuesta">📤 Pegar respuesta en emisor</button>
-  </div>
+
+  <h4>📤 Oferta (copiar desde emisor):</h4>
+  <textarea id="offerText" placeholder="La oferta aparecerá aquí" readonly></textarea>
+  <button id="btnCopiarOferta" class="copy-btn">📋 Copiar oferta</button>
+
+  <h4>📥 Pegar oferta en receptor:</h4>
+  <textarea id="pasteOffer" placeholder="Pega aquí la oferta del emisor"></textarea>
+  <button id="btnPegarOferta">📥 Procesar oferta</button>
+
+  <h4>📤 Respuesta (copiar desde receptor):</h4>
+  <textarea id="answerText" placeholder="La respuesta aparecerá aquí" readonly></textarea>
+  <button id="btnCopiarRespuesta" class="copy-btn">📋 Copiar respuesta</button>
+
+  <h4>📥 Pegar respuesta en emisor:</h4>
+  <textarea id="pasteAnswer" placeholder="Pega aquí la respuesta del receptor"></textarea>
+  <button id="btnPegarRespuesta">📥 Procesar respuesta</button>
+
   <h3>📋 Log</h3>
   <div id="log"></div>
 
   <script>
+    // --- Variables globales ---
     let pc = null;
     let localStream = null;
     let rol = null; // 'emisor' o 'receptor'
+    let audioElement = null;
 
     const log = (msg) => {
       const el = document.getElementById('log');
@@ -46,112 +55,196 @@
       el.scrollTop = el.scrollHeight;
     };
 
+    // --- Configuración ICE (STUN + TURN opcional) ---
     const iceConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' }
+        // Si tienes TURN, descomenta y añade:
+        // {
+        //   urls: 'turn:relay.cloudflare.com:3478?transport=udp',
+        //   username: 'TU_USUARIO',
+        //   credential: 'TU_CONTRASEÑA'
+        // }
       ]
     };
 
+    // --- Crear conexión Peer ---
     function createPeerConnection(esEmisor) {
-      if (pc) { pc.close(); pc = null; }
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+
       pc = new RTCPeerConnection(iceConfig);
 
       if (esEmisor) {
+        // Emisor: capturar audio del micrófono
         navigator.mediaDevices.getUserMedia({ audio: true })
           .then(stream => {
             localStream = stream;
             stream.getTracks().forEach(track => pc.addTrack(track, stream));
-            log('🎤 Audio capturado');
+            log('🎤 Audio capturado en emisor');
           })
           .catch(err => log('❌ Error al capturar audio: ' + err.message));
       } else {
-        const audio = new Audio();
+        // Receptor: preparar elemento de audio para reproducción
+        audioElement = new Audio();
         pc.ontrack = (event) => {
-          audio.srcObject = event.streams[0];
-          audio.play();
-          log('🔊 Reproduciendo audio en PC');
+          audioElement.srcObject = event.streams[0];
+          audioElement.play()
+            .then(() => log('🔊 Reproduciendo audio en receptor'))
+            .catch(err => log('❌ Error al reproducir audio: ' + err.message));
+          log('📥 Stream de audio recibido');
         };
+        log('🔊 Receptor listo para recibir audio');
       }
 
+      // Log de candidatos ICE
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          log(`🧊 Candidato ICE: ${event.candidate.candidate.substring(0, 50)}...`);
+          log(`🧊 Candidato ICE: ${event.candidate.candidate.substring(0, 60)}...`);
         }
       };
 
       pc.oniceconnectionstatechange = () => {
         log(`🔄 Estado ICE: ${pc.iceConnectionState}`);
-        if (pc.iceConnectionState === 'connected') {
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           log('✅ ¡Conexión establecida!');
+        } else if (pc.iceConnectionState === 'failed') {
+          log('❌ La conexión falló. Verifica TURN o la red.');
         }
       };
 
       return pc;
     }
 
-    // --- Emisor: Crear oferta y mostrarla ---
-    async function iniciarEmisor() {
-      if (rol === 'emisor') return;
+    // --- Modo Emisor ---
+    document.getElementById('btnEmisor').onclick = async () => {
+      if (rol === 'emisor') {
+        log('⚠️ Ya estás en modo emisor');
+        return;
+      }
       rol = 'emisor';
       log('📱 Modo Emisor (Móvil)');
-      pc = createPeerConnection(true);
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      document.getElementById('offerText').value = JSON.stringify(offer);
-      log('📤 Oferta generada (cópiala y pégala en el PC)');
-    }
 
-    // --- Receptor: Pegar oferta y generar respuesta ---
-    async function pegarOferta() {
-      if (rol === 'receptor') return;
+      // Crear conexión
+      pc = createPeerConnection(true);
+
+      // Esperar a que el stream esté listo y generar oferta
+      setTimeout(async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          const offerJSON = JSON.stringify(offer);
+          document.getElementById('offerText').value = offerJSON;
+          log('📤 Oferta creada. Cópiala y pégala en el receptor.');
+        } catch (err) {
+          log('❌ Error al crear oferta: ' + err.message);
+        }
+      }, 1000); // Esperar 1s para que el stream se captura
+    };
+
+    // --- Modo Receptor ---
+    document.getElementById('btnReceptor').onclick = () => {
+      if (rol === 'receptor') {
+        log('⚠️ Ya estás en modo receptor');
+        return;
+      }
       rol = 'receptor';
       log('💻 Modo Receptor (PC)');
-      const offerText = document.getElementById('offerText').value;
-      if (!offerText) { log('❌ No hay oferta para pegar'); return; }
+
+      // Crear conexión (sin capturar audio)
+      pc = createPeerConnection(false);
+      log('📥 Esperando oferta. Pégala en el campo inferior y pulsa "Procesar oferta".');
+    };
+
+    // --- Procesar oferta (receptor) ---
+    document.getElementById('btnPegarOferta').onclick = async () => {
+      if (rol !== 'receptor') {
+        log('⚠️ Debes estar en modo receptor primero');
+        return;
+      }
+      const offerText = document.getElementById('pasteOffer').value;
+      if (!offerText) {
+        log('⚠️ No hay oferta para procesar');
+        return;
+      }
       try {
         const offer = JSON.parse(offerText);
-        pc = createPeerConnection(false);
         await pc.setRemoteDescription(offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        document.getElementById('answerText').value = JSON.stringify(answer);
-        log('📤 Respuesta generada (cópiala y pégala en el móvil)');
+        const answerJSON = JSON.stringify(answer);
+        document.getElementById('answerText').value = answerJSON;
+        log('📤 Respuesta creada. Cópiala y pégala en el emisor.');
       } catch (err) {
         log('❌ Error al procesar oferta: ' + err.message);
       }
-    }
+    };
 
-    // --- Emisor: Pegar respuesta para completar conexión ---
-    async function pegarRespuesta() {
-      if (rol !== 'emisor') { log('❌ Debes estar en modo Emisor'); return; }
-      const answerText = document.getElementById('answerText').value;
-      if (!answerText) { log('❌ No hay respuesta para pegar'); return; }
+    // --- Procesar respuesta (emisor) ---
+    document.getElementById('btnPegarRespuesta').onclick = async () => {
+      if (rol !== 'emisor') {
+        log('⚠️ Debes estar en modo emisor primero');
+        return;
+      }
+      const answerText = document.getElementById('pasteAnswer').value;
+      if (!answerText) {
+        log('⚠️ No hay respuesta para procesar');
+        return;
+      }
       try {
         const answer = JSON.parse(answerText);
         await pc.setRemoteDescription(answer);
-        log('✅ Conexión completada');
+        log('✅ Respuesta procesada. La conexión debería establecerse.');
       } catch (err) {
         log('❌ Error al procesar respuesta: ' + err.message);
       }
-    }
+    };
 
-    function detenerTransmision() {
-      if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-      if (pc) { pc.close(); pc = null; }
+    // --- Botones de copiar ---
+    document.getElementById('btnCopiarOferta').onclick = () => {
+      const text = document.getElementById('offerText');
+      text.select();
+      navigator.clipboard.writeText(text.value)
+        .then(() => log('📋 Oferta copiada al portapapeles'))
+        .catch(() => log('⚠️ No se pudo copiar automáticamente. Copia manualmente.'));
+    };
+
+    document.getElementById('btnCopiarRespuesta').onclick = () => {
+      const text = document.getElementById('answerText');
+      text.select();
+      navigator.clipboard.writeText(text.value)
+        .then(() => log('📋 Respuesta copiada al portapapeles'))
+        .catch(() => log('⚠️ No se pudo copiar automáticamente. Copia manualmente.'));
+    };
+
+    // --- Detener transmisión ---
+    document.getElementById('btnDetener').onclick = () => {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+      }
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.srcObject = null;
+      }
       rol = null;
       document.getElementById('offerText').value = '';
       document.getElementById('answerText').value = '';
-      log('⏹️ Transmisión detenida');
-    }
-
-    document.getElementById('btnEmisor').onclick = iniciarEmisor;
-    document.getElementById('btnReceptor').onclick = () => { log('💻 Modo Receptor listo. Pega la oferta manualmente.'); };
-    document.getElementById('btnPegarOferta').onclick = pegarOferta;
-    document.getElementById('btnPegarRespuesta').onclick = pegarRespuesta;
-    document.getElementById('btnDetener').onclick = detenerTransmision;
+      document.getElementById('pasteOffer').value = '';
+      document.getElementById('pasteAnswer').value = '';
+      log('⏹️ Transmisión detenida y limpiada');
+    };
 
     log('🚀 App iniciada. Modo manual (sin servidores externos)');
+    log('💡 En el móvil: pulsa "Emisor" y comparte la oferta');
+    log('💡 En el PC: pulsa "Receptor", pega la oferta y comparte la respuesta');
   </script>
 </body>
 </html>
