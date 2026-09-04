@@ -1,405 +1,220 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Streamer - PeerJS</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #eee; }
-        h1 { color: #e94560; text-align: center; }
-        .card { background: #16213e; padding: 20px; border-radius: 12px; margin: 15px 0; }
-        .card h3 { margin-top: 0; color: #0f3460; }
-        button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; margin: 5px 0; }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        button.secondary { background: #0f3460; }
-        button.success { background: #2ecc71; }
-        .log { background: #0a0a1a; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; margin-top: 10px; border: 1px solid #333; }
-        .flex { display: flex; gap: 10px; }
-        .flex button { flex: 1; }
-        input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #0a0a1a; color: white; font-size: 14px; box-sizing: border-box; margin: 5px 0; }
-        .status { padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; font-weight: bold; }
-        .status.connected { background: #2ecc71; color: #000; }
-        .status.waiting { background: #f39c12; color: #000; }
-        .status.error { background: #e74c3c; color: #fff; }
-        .hidden { display: none; }
-        .peer-id { background: #0f3460; padding: 10px; border-radius: 8px; text-align: center; margin: 10px 0; font-size: 18px; word-break: break-all; }
-        .peer-id span { background: #1a1a2e; padding: 4px 12px; border-radius: 4px; font-family: monospace; }
-        @media (max-width: 480px) { body { padding: 10px; } }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streaming Audio - Corporativo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; background: #1a1a2e; color: white; }
+    button { padding: 15px 30px; margin: 10px; font-size: 18px; border: none; border-radius: 10px; cursor: pointer; }
+    #btnEmisor { background: #e94560; color: white; }
+    #btnReceptor { background: #0f3460; color: white; }
+    #btnDetener { background: #533483; color: white; }
+    #log { background: #16213e; padding: 15px; border-radius: 10px; max-height: 400px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; }
+  </style>
 </head>
 <body>
+  <h1>🎧 Audio Streamer</h1>
+  <div>
+    <button id="btnEmisor">📱 Emisor (Móvil)</button>
+    <button id="btnReceptor">💻 Receptor (PC)</button>
+    <button id="btnDetener">⏹️ Detener</button>
+  </div>
+  <h3>📋 Log de eventos</h3>
+  <div id="log"></div>
 
-<h1>🔊 Audio Streamer</h1>
+  <!-- Firebase SDK (versión compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 
-<!-- Modo de selección -->
-<div class="card">
-    <h3>🎯 Modo</h3>
-    <div class="flex">
-        <button id="btnEmisor" class="secondary">📱 Emisor (Móvil)</button>
-        <button id="btnReceptor" class="secondary">💻 Receptor (PC)</button>
-    </div>
-</div>
+  <script>
+    // --- Configuración Firebase ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyByw1Dx3RJcsdNDVtoSdpQb9GTPk4yeWBY",
+      authDomain: "spotify-9fd7f.firebaseapp.com",
+      databaseURL: "https://spotify-9fd7f-default-rtdb.firebaseio.com",
+      projectId: "spotify-9fd7f",
+      storageBucket: "spotify-9fd7f.firebasestorage.app",
+      messagingSenderId: "331137798892",
+      appId: "1:331137798892:web:c473071f2bf4bb57848bc9"
+    };
 
-<!-- Panel Emisor -->
-<div id="panelEmisor" class="card hidden">
-    <h3>📱 Emisor - Transmitir audio</h3>
-    <div class="peer-id">Tu ID: <span id="emisorId">---</span></div>
-    <p style="font-size:14px;color:#aaa;">Comparte este ID con el receptor para que se conecte.</p>
-    <button id="btnIniciar" class="success">🎤 Iniciar transmisión</button>
-    <button id="btnDetener" disabled>⏹️ Detener</button>
-    <div id="estadoEmisor" class="status waiting">⏳ Esperando conexión...</div>
-</div>
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-<!-- Panel Receptor -->
-<div id="panelReceptor" class="card hidden">
-    <h3>💻 Receptor - Recibir audio</h3>
-    <input type="text" id="inputIdEmisor" placeholder="Pega aquí el ID del emisor">
-    <button id="btnConectar">🔗 Conectar</button>
-    <div id="estadoReceptor" class="status waiting">⏳ Esperando conexión...</div>
-    <div id="controlesAudio" class="hidden">
-        <button id="btnPlayPause">⏸️ Pausar</button>
-        <input type="range" id="volumen" min="0" max="1" step="0.05" value="0.8">
-        <label style="font-size:14px;">Volumen: <span id="volumenLabel">80%</span></label>
-    </div>
-</div>
+    // --- Variables globales ---
+    let pc = null;
+    let localStream = null;
+    let salaId = 'audio-sala-2026';
+    let rol = null; // 'emisor' o 'receptor'
 
-<!-- Log -->
-<div class="card">
-    <h3>📋 Log de eventos</h3>
-    <div id="log" class="log">🚀 App iniciada. Servidor PeerJS público</div>
-</div>
+    const log = (msg) => {
+      const el = document.getElementById('log');
+      el.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+      el.scrollTop = el.scrollHeight;
+    };
 
-<script>
-// --- Variables globales ---
-let peer = null;
-let connection = null;
-let localStream = null;
-let remoteStream = null;
-let audioElement = null;
-let isEmisor = false;
-let isConnected = false;
-
-// --- Elementos DOM ---
-const logDiv = document.getElementById('log');
-const panelEmisor = document.getElementById('panelEmisor');
-const panelReceptor = document.getElementById('panelReceptor');
-const btnEmisor = document.getElementById('btnEmisor');
-const btnReceptor = document.getElementById('btnReceptor');
-const btnIniciar = document.getElementById('btnIniciar');
-const btnDetener = document.getElementById('btnDetener');
-const btnConectar = document.getElementById('btnConectar');
-const btnPlayPause = document.getElementById('btnPlayPause');
-const inputIdEmisor = document.getElementById('inputIdEmisor');
-const emisorIdSpan = document.getElementById('emisorId');
-const estadoEmisor = document.getElementById('estadoEmisor');
-const estadoReceptor = document.getElementById('estadoReceptor');
-const volumenSlider = document.getElementById('volumen');
-const volumenLabel = document.getElementById('volumenLabel');
-const controlesAudio = document.getElementById('controlesAudio');
-
-// --- Funciones de log ---
-function log(msg) {
-    const timestamp = new Date().toLocaleTimeString();
-    logDiv.textContent += `\n[${timestamp}] ${msg}`;
-    logDiv.scrollTop = logDiv.scrollHeight;
-}
-
-// --- Crear Peer ---
-function createPeer() {
-    // Intentar reconectar si existe
-    if (peer) {
-        peer.destroy();
+    // --- Funciones de señalización con Firebase ---
+    async function guardarOferta(oferta) {
+      await db.ref(`salas/${salaId}/oferta`).set(oferta);
+      log('📤 Oferta guardada en Firebase');
     }
-    
-    // Generar ID aleatorio para el emisor, o usar uno fijo para pruebas
-    const peerId = isEmisor ? 'emisor-' + Math.random().toString(36).substring(2, 8) : undefined;
-    
-    peer = new Peer(peerId, {
-        debug: 2,
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                // Servidores TURN gratuitos de Google (limitados)
-                { urls: 'turn:turn.anyfirewall.com:443?transport=udp', credential: 'webrtc', username: 'webrtc' }
-            ]
-        }
-    });
-    
-    peer.on('open', id => {
-        log(`🔑 Conectado a PeerJS. ID: ${id}`);
-        if (isEmisor) {
-            emisorIdSpan.textContent = id;
-            estadoEmisor.textContent = '✅ ID generado. Esperando que el receptor se conecte...';
-            estadoEmisor.className = 'status waiting';
-        }
-    });
-    
-    peer.on('error', err => {
-        log(`❌ Error PeerJS: ${err.message}`);
-        if (isEmisor) {
-            estadoEmisor.textContent = `❌ Error: ${err.message}`;
-            estadoEmisor.className = 'status error';
-        } else {
-            estadoReceptor.textContent = `❌ Error: ${err.message}`;
-            estadoReceptor.className = 'status error';
-        }
-    });
-    
-    peer.on('disconnected', () => {
-        log('⚠️ Desconectado de PeerJS');
-    });
-    
-    return peer;
-}
 
-// --- Modo Emisor ---
-function setupEmisor() {
-    isEmisor = true;
-    panelEmisor.classList.remove('hidden');
-    panelReceptor.classList.add('hidden');
-    btnEmisor.disabled = true;
-    btnReceptor.disabled = false;
-    log('📱 Modo Emisor (Móvil)');
-    createPeer();
-}
-
-// --- Modo Receptor ---
-function setupReceptor() {
-    isEmisor = false;
-    panelReceptor.classList.remove('hidden');
-    panelEmisor.classList.add('hidden');
-    btnReceptor.disabled = true;
-    btnEmisor.disabled = false;
-    log('💻 Modo Receptor (PC)');
-    createPeer();
-    
-    // Escuchar conexiones entrantes (el receptor recibe la llamada del emisor)
-    peer.on('connection', conn => {
-        log('📞 Conexión entrante detectada');
-        connection = conn;
-        setupConnection();
-    });
-}
-
-// --- Configurar conexión (para ambos lados) ---
-function setupConnection() {
-    if (!connection) return;
-    
-    connection.on('open', () => {
-        log('🔗 Conexión establecida');
-        isConnected = true;
-        
-        if (isEmisor) {
-            estadoEmisor.textContent = '✅ Conectado. Haz clic en "Iniciar transmisión"';
-            estadoEmisor.className = 'status connected';
-            btnIniciar.disabled = false;
-        } else {
-            estadoReceptor.textContent = '✅ Conectado. Esperando audio del emisor...';
-            estadoReceptor.className = 'status connected';
-        }
-    });
-    
-    connection.on('close', () => {
-        log('🔌 Conexión cerrada');
-        isConnected = false;
-        if (isEmisor) {
-            estadoEmisor.textContent = '⏹️ Desconectado';
-            estadoEmisor.className = 'status waiting';
-            btnIniciar.disabled = true;
-            btnDetener.disabled = true;
-        } else {
-            estadoReceptor.textContent = '⏹️ Desconectado';
-            estadoReceptor.className = 'status waiting';
-            controlesAudio.classList.add('hidden');
-        }
-        if (audioElement) {
-            audioElement.pause();
-            audioElement.srcObject = null;
-        }
-    });
-}
-
-// --- Iniciar transmisión (Emisor) ---
-async function iniciarTransmision() {
-    if (!connection || !isConnected) {
-        log('❌ No hay conexión activa');
-        return;
+    async function guardarRespuesta(respuesta) {
+      await db.ref(`salas/${salaId}/respuesta`).set(respuesta);
+      log('📤 Respuesta guardada en Firebase');
     }
-    
-    try {
-        log('🎤 Solicitando acceso al micrófono...');
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
-        });
-        log('🎤 Audio capturado');
-        
-        // Enviar el stream a través de la conexión PeerJS
-        // Usamos el API de MediaConnection para audio
-        const mediaConnection = peer.call(connection.peer, localStream);
-        
-        mediaConnection.on('stream', (remoteStreamReceived) => {
-            log('📥 Stream remoto recibido (confirmación)');
-            remoteStream = remoteStreamReceived;
-            // En el emisor, esto solo confirma que el receptor recibió el audio
-        });
-        
-        mediaConnection.on('error', err => {
-            log(`❌ Error en media connection: ${err.message}`);
-            estadoEmisor.textContent = `❌ Error: ${err.message}`;
-            estadoEmisor.className = 'status error';
-        });
-        
-        btnIniciar.disabled = true;
-        btnDetener.disabled = false;
-        estadoEmisor.textContent = '🎵 Transmitiendo audio en vivo...';
-        estadoEmisor.className = 'status connected';
-        log('🎵 Transmisión iniciada');
-        
-    } catch (err) {
-        log(`❌ Error al capturar audio: ${err.message}`);
-        estadoEmisor.textContent = `❌ Error: ${err.message}`;
-        estadoEmisor.className = 'status error';
-    }
-}
 
-// --- Detener transmisión (Emisor) ---
-function detenerTransmision() {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
+    function escucharOferta(callback) {
+      const ref = db.ref(`salas/${salaId}/oferta`);
+      ref.on('value', snapshot => {
+        const oferta = snapshot.val();
+        if (oferta) {
+          log('📥 Oferta recibida desde Firebase');
+          callback(oferta);
+        }
+      });
+    }
+
+    function escucharRespuesta(callback) {
+      const ref = db.ref(`salas/${salaId}/respuesta`);
+      ref.on('value', snapshot => {
+        const respuesta = snapshot.val();
+        if (respuesta) {
+          log('📥 Respuesta recibida desde Firebase');
+          callback(respuesta);
+        }
+      });
+    }
+
+    function limpiarSala() {
+      db.ref(`salas/${salaId}`).remove();
+      log('🧹 Sala limpiada');
+    }
+
+    // --- Configuración ICE con STUN (y TURN opcional) ---
+    const iceConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+        // Si tienes credenciales de TURN, descomenta esto:
+        // {
+        //   urls: 'turn:relay.cloudflare.com:3478?transport=udp',
+        //   username: 'TU_USUARIO',
+        //   credential: 'TU_CONTRASEÑA'
+        // }
+      ]
+    };
+
+    // --- Crear conexión Peer ---
+    function createPeerConnection(esEmisor) {
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      pc = new RTCPeerConnection(iceConfig);
+
+      if (esEmisor) {
+        // Capturar audio del micrófono
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            localStream = stream;
+            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            log('🎤 Audio capturado');
+          })
+          .catch(err => log('❌ Error al capturar audio: ' + err.message));
+      } else {
+        // Reproducir audio en el receptor
+        const audio = new Audio();
+        pc.ontrack = (event) => {
+          audio.srcObject = event.streams[0];
+          audio.play();
+          log('🔊 Reproduciendo audio en PC');
+        };
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          log(`🧊 Candidato ICE: ${event.candidate.candidate.substring(0, 50)}...`);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log(`🔄 Estado ICE: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'connected') {
+          log('✅ ¡Conexión establecida!');
+        }
+      };
+
+      return pc;
+    }
+
+    // --- Modo Emisor (Móvil) ---
+    async function iniciarEmisor() {
+      if (rol === 'emisor') return;
+      rol = 'emisor';
+      log('📱 Modo Emisor (Móvil)');
+      limpiarSala();
+
+      pc = createPeerConnection(true);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await guardarOferta(offer);
+
+      // Escuchar respuesta del receptor
+      escucharRespuesta(async (respuesta) => {
+        try {
+          await pc.setRemoteDescription(respuesta);
+          log('✅ Conexión completada');
+        } catch (err) {
+          log('❌ Error al establecer respuesta: ' + err.message);
+        }
+      });
+    }
+
+    // --- Modo Receptor (PC) ---
+    async function iniciarReceptor() {
+      if (rol === 'receptor') return;
+      rol = 'receptor';
+      log('💻 Modo Receptor (PC)');
+
+      pc = createPeerConnection(false);
+
+      // Escuchar oferta del emisor
+      escucharOferta(async (oferta) => {
+        try {
+          await pc.setRemoteDescription(oferta);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await guardarRespuesta(answer);
+          log('✅ Respuesta enviada');
+        } catch (err) {
+          log('❌ Error al procesar oferta: ' + err.message);
+        }
+      });
+    }
+
+    // --- Detener transmisión ---
+    function detenerTransmision() {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
         localStream = null;
+      }
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      limpiarSala();
+      rol = null;
+      log('⏹️ Transmisión detenida');
     }
-    // Cerrar la conexión de medios (si existe)
-    if (connection) {
-        connection.close();
-    }
-    btnIniciar.disabled = false;
-    btnDetener.disabled = true;
-    estadoEmisor.textContent = '⏹️ Transmisión detenida';
-    estadoEmisor.className = 'status waiting';
-    log('⏹️ Transmisión detenida');
-}
 
-// --- Conectar como receptor a un emisor ---
-function conectarAEmisor() {
-    const emisorId = inputIdEmisor.value.trim();
-    if (!emisorId) {
-        log('❌ Introduce un ID de emisor válido');
-        estadoReceptor.textContent = '❌ Introduce un ID válido';
-        estadoReceptor.className = 'status error';
-        return;
-    }
-    
-    log(`🔗 Conectando al emisor: ${emisorId}`);
-    estadoReceptor.textContent = '⏳ Conectando...';
-    estadoReceptor.className = 'status waiting';
-    
-    // Conectar mediante PeerJS
-    connection = peer.connect(emisorId);
-    setupConnection();
-    
-    // Escuchar el stream de audio entrante
-    // Para esto, necesitamos que el emisor inicie una MediaConnection
-    // La mejor práctica: el receptor escucha llamadas entrantes
-    peer.on('call', call => {
-        log('📞 Llamada entrante del emisor');
-        // Aceptar la llamada y obtener el stream de audio
-        call.answer(); // No enviamos audio, solo recibimos
-        call.on('stream', stream => {
-            log('🎵 Stream de audio recibido');
-            remoteStream = stream;
-            reproducirAudio(stream);
-            estadoReceptor.textContent = '🎵 Reproduciendo audio...';
-            estadoReceptor.className = 'status connected';
-            controlesAudio.classList.remove('hidden');
-        });
-        call.on('error', err => {
-            log(`❌ Error en llamada: ${err.message}`);
-            estadoReceptor.textContent = `❌ Error: ${err.message}`;
-            estadoReceptor.className = 'status error';
-        });
-    });
-    
-    // Si el emisor ya inició la transmisión, la llamada llegará automáticamente
-    // Si no, esperaremos
-    setTimeout(() => {
-        if (!remoteStream) {
-            log('⏳ Esperando que el emisor inicie la transmisión...');
-            estadoReceptor.textContent = '⏳ Esperando transmisión del emisor...';
-            estadoReceptor.className = 'status waiting';
-        }
-    }, 2000);
-}
+    // --- Eventos de botones ---
+    document.getElementById('btnEmisor').onclick = iniciarEmisor;
+    document.getElementById('btnReceptor').onclick = iniciarReceptor;
+    document.getElementById('btnDetener').onclick = detenerTransmision;
 
-// --- Reproducir audio en el receptor ---
-function reproducirAudio(stream) {
-    if (!audioElement) {
-        audioElement = new Audio();
-        audioElement.autoplay = true;
-        // Configurar volumen
-        audioElement.volume = parseFloat(volumenSlider.value);
-    }
-    audioElement.srcObject = stream;
-    audioElement.play().catch(err => {
-        log(`❌ Error al reproducir: ${err.message}`);
-    });
-    log('🔊 Audio en reproducción');
-    actualizarVolumen();
-}
-
-// --- Controles de audio ---
-function togglePlayPause() {
-    if (!audioElement) return;
-    if (audioElement.paused) {
-        audioElement.play();
-        btnPlayPause.textContent = '⏸️ Pausar';
-        log('▶️ Reproducción reanudada');
-    } else {
-        audioElement.pause();
-        btnPlayPause.textContent = '▶️ Reanudar';
-        log('⏸️ Reproducción pausada');
-    }
-}
-
-function actualizarVolumen() {
-    const val = parseFloat(volumenSlider.value);
-    if (audioElement) audioElement.volume = val;
-    volumenLabel.textContent = Math.round(val * 100) + '%';
-}
-
-// --- Eventos de UI ---
-btnEmisor.addEventListener('click', setupEmisor);
-btnReceptor.addEventListener('click', setupReceptor);
-btnIniciar.addEventListener('click', iniciarTransmision);
-btnDetener.addEventListener('click', detenerTransmision);
-btnConectar.addEventListener('click', conectarAEmisor);
-btnPlayPause.addEventListener('click', togglePlayPause);
-volumenSlider.addEventListener('input', actualizarVolumen);
-
-// --- Inicialización automática en modo emisor (por defecto) ---
-// Al cargar, arrancamos en modo emisor para que sea más intuitivo en móvil
-window.onload = function() {
-    setupEmisor();
-};
-
-// -- Limpiar al cerrar --
-window.addEventListener('beforeunload', function() {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-    }
-    if (peer) {
-        peer.destroy();
-    }
-});
-
-log('📱 App iniciada. Servidor PeerJS público');
-log('💡 En el móvil: pulsa "Emisor" y comparte tu ID');
-log('💡 En el PC: pulsa "Receptor" y pega el ID del móvil');
-</script>
+    log('🚀 App iniciada. Firebase + STUN');
+  </script>
 </body>
 </html>
